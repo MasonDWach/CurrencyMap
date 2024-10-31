@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<base target="_top">
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	
+	<title>Currency Exchange Percent Change Map</title>
+	
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+	<style>
+		html, body {
+			height: 100%;
+			margin: 0;
+		}
+		#map { width: 100%; height: 100vh; }
+		.info { padding: 6px 8px; font: 14px/16px Arial, Helvetica, sans-serif; background: rgba(255, 255, 255, 0.8); box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px; }
+		.legend { text-align: left; line-height: 18px; color: #555; }
+		.legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.7; }
+
+        #timeframe {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%); /* Centers the element */
+            z-index: 1000;
+            background-color: white;
+            padding: 5px;
+            border-radius: 5px;
+        }
+
+    label {
+        font-size: 14px;
+    }
+	</style>
+</head>
+<body>
+
+<div id='map'></div>
+
+<div>
+    <label for="timeframe">Select Timeframe:</label>
+    <select id="timeframe">
+        <option value="1">Yesterday</option>
+        <option value="7">A Week Ago</option>
+        <option value="30">A Month Ago</option>
+        <option value="180">6 Months Ago</option>
+    </select>
+</div>
+
+<!-- Include the countryData definition -->
+<script src="countries.js"></script>
+
+<script type="text/javascript">
+	const map = L.map('map').setView([0, 0], 2);
+
+	// Add tile layer for background
+	L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+		maxZoom: 19,
+		attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+	}).addTo(map);
+
+	// Control that shows currency info on hover
+	const info = L.control();
+
+	info.onAdd = function (map) {
+		this._div = L.DomUtil.create('div', 'info');
+		this.update();
+		return this._div;
+	};
+
+	// Info control to display percent change
+	info.update = function (props) {
+    const contents = props
+        ? `<b>${props.admin}</b><br>Currency: ${props.currency}<br>
+           Today: ${props.today_value !== undefined ? props.today_value : 'N/A'}<br>
+           Previous: ${props.date_ago_value !== undefined ? props.date_ago_value : 'N/A'}<br>
+           Change: ${props.currency_change !== null ? props.currency_change.toFixed(2) + '%' : 'N/A'}`
+        : 'Hover over a country';
+    this._div.innerHTML = `<h4>Exchange Rate Performance Against US Dollar</h4>${contents}`;
+};
+
+
+
+	info.addTo(map);
+
+	// Fetch data for current and previous day, then calculate percent change
+	// Function to get a date in the format 'YYYY-MM-DD' that is `days` days ago
+    function getDateDaysAgo(days) {
+        const date = new Date();
+        date.setDate(date.getDate() - days);
+        return date.toISOString().split('T')[0]; // Format as YYYY-MM-DD
+    }
+
+    // Fetch and update the map when the user selects a timeframe
+    document.getElementById('timeframe').addEventListener('change', function () {
+        const daysAgo = parseInt(this.value);
+        fetchAndUpdateMap(daysAgo);
+    });
+
+    function fetchAndUpdateMap(daysAgo) {
+        const todayUrl = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${getDateDaysAgo(0)}/v1/currencies/usd.json`;
+        const dateAgoUrl = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@${getDateDaysAgo(daysAgo)}/v1/currencies/usd.json`;
+
+        Promise.all([fetch(todayUrl), fetch(dateAgoUrl)])
+            .then(async ([todayResponse, dateAgoResponse]) => {
+                const todayData = (await todayResponse.json()).usd;
+                const dateAgoData = (await dateAgoResponse.json()).usd;
+
+                console.log("Today's Data:", todayData); // Check if today's data is fetched
+                console.log(`${daysAgo} Days Ago Data:`, dateAgoData); // Check if dateAgo data is fetched
+
+                calculatePercentChange(todayData, dateAgoData);
+            })
+            .catch(error => console.error("Error fetching currency data:", error));
+    }
+
+
+    // Calculate percent change and update `countryData`
+    function calculatePercentChange(todayData, dateAgoData) {
+        countryData.features.forEach(feature => {
+            const currencyCode = feature.properties.currency ? feature.properties.currency.toLowerCase() : null;
+
+            if (currencyCode && todayData[currencyCode] !== undefined && dateAgoData[currencyCode] !== undefined) {
+                const todayValue = todayData[currencyCode];
+                const dateAgoValue = dateAgoData[currencyCode];
+                const percentChange = ((todayValue - dateAgoValue) / dateAgoValue) * 100;
+
+                feature.properties.today_value = todayValue;
+                feature.properties.date_ago_value = dateAgoValue;
+                feature.properties.currency_change = percentChange;
+            } else {
+                feature.properties.today_value = null;
+                feature.properties.date_ago_value = null;
+                feature.properties.currency_change = null; // Leave blank if no data
+            }
+        });
+
+        // Initialize or update the GeoJSON layer after updating `countryData`
+        if (window.geojson) {
+            map.removeLayer(geojson);
+        }
+        geojson = L.geoJson(countryData, { style, onEachFeature }).addTo(map);
+    }
+
+
+
+	// Color scale based on percent change
+	function getColor(value) {
+		if (value === null) return '#ffffff'; // Grey for no data
+		return value > 5 ? '#18c71d' :
+			   value > 2 ? '#37a344' :
+			   value > 0.5 ? '#4a7d50' :
+			   value > -0.5 ? '#8c8c8c' :
+			   value > -2 ? '#ad2626' :
+			   value > -5 ? '#ff0000' : '#ff0000';
+	}
+
+	// Style function for each feature, using currency_change
+	function style(feature) {
+		return {
+			weight: 2,
+			opacity: 1,
+			color: 'white',
+			dashArray: '3',
+			fillOpacity: feature.properties.currency_change !== null ? 0.7 : 0,
+			fillColor: getColor(feature.properties.currency_change)
+		};
+	}
+
+	// Highlight feature on hover
+	function highlightFeature(e) {
+		const layer = e.target;
+		layer.setStyle({
+			weight: 5,
+			color: '#666',
+			dashArray: '',
+			fillOpacity: 0.7
+		});
+		layer.bringToFront();
+		info.update(layer.feature.properties);
+	}
+
+	function resetHighlight(e) {
+		geojson.resetStyle(e.target);
+		info.update();
+	}
+
+	function zoomToFeature(e) {
+		map.fitBounds(e.target.getBounds());
+	}
+
+	// Apply style and add interactivity to each feature
+	function onEachFeature(feature, layer) {
+		layer.on({
+			mouseover: highlightFeature,
+			mouseout: resetHighlight,
+			click: zoomToFeature
+		});
+	}
+
+    window.onload = function() {
+        fetchAndUpdateMap(1); // Load with data for "Yesterday" by default
+    };
+
+	// Legend for percent change color scale
+	const legend = L.control({ position: 'bottomright' });
+
+	legend.onAdd = function (map) {
+		const div = L.DomUtil.create('div', 'info legend');
+		const grades = [-5, -2, 0, 2, 5];
+		const labels = [];
+
+		for (let i = 0; i < grades.length; i++) {
+			const from = grades[i];
+			const to = grades[i + 1];
+			labels.push(`<i style="background:${getColor(from + 0.1)}"></i> ${from}${to ? `&ndash;${to}` : '+'}`);
+		}
+
+		div.innerHTML = labels.join('<br>');
+		return div;
+	};
+	legend.addTo(map);
+
+</script>
+
+</body>
+</html>
