@@ -150,12 +150,12 @@
 	// Color scale based on percent change
 	function getColor(value) {
 		if (value === null) return '#ffffff'; // Grey for no data
-		return value > 5 ? '#18c71d' :
+		return value < 5 ? '#18c71d' :
 			   value > 2 ? '#37a344' :
 			   value > 0.5 ? '#4a7d50' :
 			   value > -0.5 ? '#8c8c8c' :
 			   value > -2 ? '#ad2626' :
-			   value > -5 ? '#ff0000' : '#ff0000';
+			   value > -5 ? '#b03131' : '#ff0000';
 	}
 
 	// Style function for each feature, using currency_change
