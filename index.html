@@ -154,8 +154,8 @@
 			   value > 2 ? '#37a344' :
 			   value > 0.5 ? '#4a7d50' :
 			   value > -0.5 ? '#8c8c8c' :
-			   value > -2 ? '#ad2626' :
-			   value > -5 ? '#b03131' : '#ff0000';
+			   value > -2 ? '#823737' :
+			   value > -5 ? '#cc1f1f' : '#ff0000';
 	}
 
 	// Style function for each feature, using currency_change
@@ -205,24 +205,31 @@
         fetchAndUpdateMap(1); // Load with data for "Yesterday" by default
     };
 
-	// Legend for percent change color scale
-	const legend = L.control({ position: 'bottomright' });
+// Legend for percent change color scale
+const legend = L.control({ position: 'bottomright' });
 
-	legend.onAdd = function (map) {
-		const div = L.DomUtil.create('div', 'info legend');
-		const grades = [-5, -2, -0.5, 0.5, 2, 5];
-		const labels = [];
+legend.onAdd = function (map) {
+    const div = L.DomUtil.create('div', 'info legend');
+    const grades = [-Infinity, -5, -2, -0.5, 0.5, 2, 5, Infinity];
+    const labels = [];
 
-		for (let i = 0; i < grades.length; i++) {
-			const from = grades[i];
-			const to = grades[i + 1];
-			labels.push(`<i style="background:${getColor(from + 0.1)}"></i> ${from}${to ? `&ndash;${to}` : '+'}`);
-		}
+    for (let i = 0; i < grades.length - 1; i++) {
+        const from = grades[i];
+        const to = grades[i + 1];
 
-		div.innerHTML = labels.join('<br>');
-		return div;
-	};
-	legend.addTo(map);
+        labels.push(
+            `<i style="background:${getColor((from + to) / 2)}"></i> ` +
+            (from === -Infinity ? 'Less than -5' :
+             to === Infinity ? 'More than 5' :
+             `${from} to ${to}`)
+        );
+    }
+
+    div.innerHTML = labels.join('<br>');
+    return div;
+};
+
+legend.addTo(map);
 
 </script>
 
